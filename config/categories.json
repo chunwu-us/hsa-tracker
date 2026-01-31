@@ -1,0 +1,40 @@
+{
+  "categories": [
+    {
+      "id": "medical",
+      "name": "Medical",
+      "description": "Doctor visits, hospital, urgent care, lab work",
+      "keywords": ["medical", "physician", "doctor", "hospital", "clinic", "lab", "urgent care", "office visit"]
+    },
+    {
+      "id": "dental",
+      "name": "Dental",
+      "description": "Dental checkups, procedures, orthodontics",
+      "keywords": ["dental", "dentist", "orthodont", "teeth", "oral"]
+    },
+    {
+      "id": "vision",
+      "name": "Vision",
+      "description": "Eye exams, glasses, contacts",
+      "keywords": ["vision", "eye", "optical", "optometr", "glasses", "contacts", "lens"]
+    },
+    {
+      "id": "prescription",
+      "name": "Prescription",
+      "description": "Prescription medications",
+      "keywords": ["pharmacy", "rx", "prescription", "cvs", "walgreens", "rite aid", "medication"]
+    },
+    {
+      "id": "mental_health",
+      "name": "Mental Health",
+      "description": "Therapy, counseling, psychiatry",
+      "keywords": ["therapy", "counseling", "psychiatr", "psycholog", "mental health", "behavioral"]
+    },
+    {
+      "id": "other",
+      "name": "Other",
+      "description": "Other HSA-eligible expenses",
+      "keywords": []
+    }
+  ]
+}

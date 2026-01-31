@@ -1,0 +1,27 @@
+# Receipts (local only - contains personal medical info)
+receipts/*
+!receipts/.gitkeep
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Secrets
+.env
+*.key
