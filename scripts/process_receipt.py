@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Process receipt images using Claude Vision API.
-Extracts date, provider, amount, and category from receipt images.
+Process receipt images/PDFs using Claude Vision API.
+Extracts date, provider, amount, and category from receipts.
+Archives to year-based folders for 15-year IRS retention.
 """
 
 import anthropic
@@ -14,10 +15,10 @@ from datetime import datetime
 import hashlib
 import shutil
 import csv
+import subprocess
 
 # Add parent dir for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import load_categories
 
 
 def encode_image(image_path: str) -> tuple[str, str]:
@@ -31,7 +32,6 @@ def encode_image(image_path: str) -> tuple[str, str]:
         '.jpeg': 'image/jpeg',
         '.gif': 'image/gif',
         '.webp': 'image/webp',
-        '.pdf': 'application/pdf'
     }
     
     media_type = media_types.get(suffix, 'image/png')
@@ -42,11 +42,43 @@ def encode_image(image_path: str) -> tuple[str, str]:
     return data, media_type
 
 
+def pdf_to_image(pdf_path: str) -> str:
+    """Convert PDF to temporary PNG image using macOS qlmanage."""
+    pdf_path = Path(pdf_path)
+    output_dir = Path('/tmp')
+    
+    # Use Quick Look to generate thumbnail
+    subprocess.run([
+        'qlmanage', '-t', '-s', '2000', '-o', str(output_dir), str(pdf_path)
+    ], capture_output=True)
+    
+    # Find generated PNG
+    png_path = output_dir / f"{pdf_path.name}.png"
+    if png_path.exists():
+        return str(png_path)
+    
+    raise RuntimeError(f"Failed to convert PDF: {pdf_path}")
+
+
 def generate_receipt_id(date: str, provider: str, amount: float) -> str:
     """Generate deterministic receipt ID."""
     seed = f"{date}:{provider}:{amount}"
     hash_val = hashlib.sha256(seed.encode()).hexdigest()[:10].upper()
-    return f"MED{hash_val}"
+    return f"HSA{hash_val}"
+
+
+def is_duplicate(date: str, provider: str, amount: float, csv_path: Path) -> bool:
+    """Check if receipt already exists in CSV."""
+    if not csv_path.exists():
+        return False
+    
+    with open(csv_path, newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if (row['Date'] == date and 
+                abs(float(row['Amount']) - amount) < 0.01):
+                return True
+    return False
 
 
 def extract_receipt_info(image_path: str, api_key: str = None) -> dict:
@@ -116,41 +148,43 @@ If you cannot determine a field with confidence, use null for that field."""
 
 
 def process_receipt(
-    image_path: str,
-    output_dir: str = None,
+    receipt_path: str,
+    archive_dir: str = None,
     csv_path: str = None,
     api_key: str = None,
     dry_run: bool = False
 ) -> dict:
     """
-    Process a receipt image:
-    1. Extract info via Claude Vision
-    2. Generate receipt ID
-    3. Copy to receipts folder with standardized name
-    4. Append to CSV
+    Process a receipt:
+    1. Convert PDF to image if needed (temp)
+    2. Extract info via Claude Vision
+    3. Check for duplicates
+    4. Generate receipt ID
+    5. Copy ORIGINAL to year-based archive folder
+    6. Append to CSV
+    7. Clean up temp files
     
     Returns extracted info dict.
     """
     
-    image_path = Path(image_path)
-    if not image_path.exists():
-        raise FileNotFoundError(f"Image not found: {image_path}")
+    receipt_path = Path(receipt_path)
+    if not receipt_path.exists():
+        raise FileNotFoundError(f"Receipt not found: {receipt_path}")
     
-    # Set defaults
-    if output_dir is None:
-        output_dir = Path(__file__).parent.parent / "receipts"
-    else:
-        output_dir = Path(output_dir)
+    is_pdf = receipt_path.suffix.lower() == '.pdf'
+    temp_image = None
     
-    if csv_path is None:
-        year = datetime.now().year
-        csv_path = Path(__file__).parent.parent / "data" / f"hsa_expenses_{year}.csv"
+    # Convert PDF to image for extraction
+    if is_pdf:
+        print(f"📄 Converting PDF: {receipt_path.name}")
+        temp_image = pdf_to_image(str(receipt_path))
+        extract_path = temp_image
     else:
-        csv_path = Path(csv_path)
+        extract_path = str(receipt_path)
     
     # Extract info
-    print(f"📄 Processing: {image_path.name}")
-    info = extract_receipt_info(str(image_path), api_key)
+    print(f"🔍 Extracting info from: {receipt_path.name}")
+    info = extract_receipt_info(extract_path, api_key)
     print(f"   Date: {info.get('date')}")
     print(f"   Provider: {info.get('provider')}")
     print(f"   Amount: ${info.get('amount')}")
@@ -158,6 +192,27 @@ def process_receipt(
     
     if info.get('date') is None or info.get('amount') is None:
         print("   ⚠️  Could not extract required fields")
+        return info
+    
+    # Determine year and paths
+    year = info['date'][:4]
+    
+    if archive_dir is None:
+        archive_dir = Path(__file__).parent.parent / "receipts" / year
+    else:
+        archive_dir = Path(archive_dir) / year
+    
+    if csv_path is None:
+        csv_path = Path(__file__).parent.parent / "data" / f"hsa_expenses_{year}.csv"
+    else:
+        csv_path = Path(csv_path)
+    
+    # Check for duplicates
+    if is_duplicate(info['date'], info.get('provider', ''), info['amount'], csv_path):
+        print(f"   ⚠️  Duplicate detected - skipping")
+        info['duplicate'] = True
+        if temp_image:
+            Path(temp_image).unlink(missing_ok=True)
         return info
     
     # Generate receipt ID
@@ -169,22 +224,24 @@ def process_receipt(
     info['receipt_id'] = receipt_id
     print(f"   Receipt ID: {receipt_id}")
     
-    # Standardized filename
+    # Standardized filename (keep original extension)
     provider_slug = (info.get('provider') or 'unknown').lower()
     provider_slug = ''.join(c if c.isalnum() else '_' for c in provider_slug)[:30]
-    new_filename = f"{info['date']}_{provider_slug}_{info['amount']}{image_path.suffix}"
-    new_path = output_dir / new_filename
-    info['receipt_path'] = f"receipts/{new_filename}"
+    new_filename = f"{info['date']}_{provider_slug}_{info['amount']}{receipt_path.suffix}"
+    archive_path = archive_dir / new_filename
+    info['receipt_path'] = f"receipts/{year}/{new_filename}"
     
     if dry_run:
-        print(f"   [DRY RUN] Would copy to: {new_path}")
+        print(f"   [DRY RUN] Would archive to: {archive_path}")
         print(f"   [DRY RUN] Would append to: {csv_path}")
+        if temp_image:
+            Path(temp_image).unlink(missing_ok=True)
         return info
     
-    # Copy file
-    output_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(image_path, new_path)
-    print(f"   ✅ Saved: {new_filename}")
+    # Archive original file
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(receipt_path, archive_path)
+    print(f"   ✅ Archived: {new_filename}")
     
     # Append to CSV
     csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -206,15 +263,19 @@ def process_receipt(
         ])
     print(f"   ✅ Added to CSV")
     
+    # Clean up temp files
+    if temp_image:
+        Path(temp_image).unlink(missing_ok=True)
+    
     return info
 
 
 def main():
     import argparse
     
-    parser = argparse.ArgumentParser(description='Process HSA receipt images')
-    parser.add_argument('image', help='Path to receipt image')
-    parser.add_argument('--output-dir', '-o', help='Output directory for receipts')
+    parser = argparse.ArgumentParser(description='Process HSA receipt images/PDFs')
+    parser.add_argument('receipt', help='Path to receipt (image or PDF)')
+    parser.add_argument('--archive-dir', '-a', help='Archive directory for receipts')
     parser.add_argument('--csv', '-c', help='Path to CSV file')
     parser.add_argument('--dry-run', '-n', action='store_true', help='Dry run, no file changes')
     parser.add_argument('--json', '-j', action='store_true', help='Output JSON only')
@@ -223,8 +284,8 @@ def main():
     
     try:
         result = process_receipt(
-            args.image,
-            output_dir=args.output_dir,
+            args.receipt,
+            archive_dir=args.archive_dir,
             csv_path=args.csv,
             dry_run=args.dry_run
         )

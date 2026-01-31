@@ -1,0 +1,2 @@
+# HSA Tracker dependencies
+anthropic>=0.77.0    # Claude Vision API for receipt extraction
