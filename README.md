@@ -66,7 +66,10 @@ hsa-tracker/
 ├── data/
 │   ├── hsa_expenses_2026.csv      # Current year
 │   └── hsa_expenses_2011-2025.csv # Historical
-├── receipts/                       # Local only (gitignored)
+├── receipts/                       # PERMANENT ARCHIVE (gitignored)
+│   ├── 2026/                       # Year-based folders
+│   ├── 2027/                       # For 15-year IRS retention
+│   └── ...
 ├── scripts/
 │   ├── process_receipt.py         # AI receipt extraction
 │   ├── add_expense.py             # Manual entry CLI
@@ -74,6 +77,13 @@ hsa-tracker/
 └── config/
     └── categories.json            # Category definitions
 ```
+
+## Receipt Retention
+
+HSA receipts must be kept for potential IRS audit. Strategy:
+- **Primary archive**: `receipts/YYYY/` (15+ years)
+- **Backup**: Consider external drive or cloud backup
+- **Index**: CSV files serve as searchable ledger
 
 ## CSV Format
 

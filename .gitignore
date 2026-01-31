@@ -1,6 +1,7 @@
 # Receipts (local only - contains personal medical info)
-receipts/*
+receipts/**/*
 !receipts/.gitkeep
+!receipts/*/.gitkeep
 
 # Data (local only - contains personal expense records)
 data/*.csv
