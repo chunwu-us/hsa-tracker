@@ -101,9 +101,10 @@ For receipts without images, use `add_expense.py` directly.
 
 ## Privacy
 
-- **Receipts are gitignored** — only CSV metadata is tracked
-- **No cloud sync** — all data stays local
-- **API calls** — only receipt images are sent to Claude for extraction
+- **Receipts are gitignored** — receipt images stay local only
+- **Data is gitignored** — CSV expense records stay local only
+- **No cloud sync** — all personal data stays on your machine
+- **API calls** — only receipt images are sent to Claude for extraction (no storage)
 
 ## Receipt ID Generation
 

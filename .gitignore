@@ -2,6 +2,10 @@
 receipts/*
 !receipts/.gitkeep
 
+# Data (local only - contains personal expense records)
+data/*.csv
+!data/.gitkeep
+
 # macOS
 .DS_Store
 
